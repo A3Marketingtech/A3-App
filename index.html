@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Display Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB1f6i210TeL9Ahf33-UpvMgRyESZy-UR4",
+    authDomain: "display-pro-f34ed.firebaseapp.com",
+    projectId: "display-pro-f34ed",
+    storageBucket: "display-pro-f34ed.firebasestorage.app",
+    messagingSenderId: "150474706532",
+    appId: "1:150474706532:web:08a68e732b8fa0a07b5971"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  // Expose to window for use in non-module scripts
+  window._db      = db;
+  window._doc     = doc;
+  window._onSnap  = onSnapshot;
+  window._setDoc  = setDoc;
+  window._getDoc  = getDoc;
+  window._fbReady = true;
+  document.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: rgba(255,255,255,0.07);
+    --accent: #e8ff47;
+    --accent2: #47c8ff;
+    --text: #f0f0f0;
+    --muted: rgba(240,240,240,0.42);
+    --danger: #ff4757;
+    --success: #2ed573;
+    --warn: #ffb347;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'DM Sans',sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    height:100vh;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    display:flex; align-items:center;
+    justify-content:space-between;
+    padding:10px 20px;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    z-index:10; flex-shrink:0; gap:12px;
+  }
+  .brand {
+    font-family:'Bebas Neue',sans-serif;
+    font-size:22px; letter-spacing:3px;
+    color:var(--accent); white-space:nowrap;
+  }
+  .topbar-right {
+    display:flex; align-items:center;
+    gap:14px; flex-wrap:wrap; justify-content:flex-end;
+  }
+
+  /* Sync indicator */
+  #sync-status {
+    display:flex; align-items:center; gap:6px;
+    font-size:10px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .sync-dot {
+    width:7px; height:7px; border-radius:50%;
+    background:var(--muted); transition:background .3s;
+  }
+  .sync-dot.online  { background:var(--success); animation:pulse-dot 2s infinite; }
+  .sync-dot.syncing { background:var(--warn); }
+  .sync-dot.error   { background:var(--danger); }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  #weather-widget {
+    display:flex; align-items:center; gap:9px;
+    background:rgba(255,255,255,.04);
+    border:1px solid var(--border);
+    border-radius:50px; padding:6px 14px;
+    cursor:pointer; transition:border-color .2s;
+  }
+  #weather-widget:hover { border-color:rgba(255,255,255,.15); }
+  .w-icon { font-size:20px; line-height:1; }
+  .w-temp { font-family:'DM Mono',monospace; font-size:17px; font-weight:500; color:var(--accent2); line-height:1; }
+  .w-desc { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; line-height:1.3; }
+  .w-error { color:var(--danger)!important; }
+
+  #clock-widget { text-align:right; }
+  .clock-time { font-family:'DM Mono',monospace; font-size:21px; font-weight:500; line-height:1; }
+  .clock-date { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+
+  #manage-btn {
+    background:var(--accent); color:#0a0a0f;
+    border:none; border-radius:50px;
+    padding:8px 18px;
+    font-family:'DM Sans',sans-serif;
+    font-weight:600; font-size:13px;
+    cursor:pointer; white-space:nowrap;
+    transition:transform .15s,opacity .15s;
+  }
+  #manage-btn:active { transform:scale(.95); opacity:.85; }
+
+  /* ── MAIN ── */
+  #main { display:flex; flex:1; overflow:hidden; }
+
+  /* ── CAROUSEL ── */
+  #carousel-wrap { flex:1; position:relative; overflow:hidden; background:#000; }
+  #slides-container { position:absolute; inset:0; }
+  .slide { position:absolute; inset:0; opacity:0; transition:opacity .7s ease; }
+  .slide.active { opacity:1; }
+  .slide img, .slide video { width:100%; height:100%; object-fit:cover; display:block; }
+  .slide-label {
+    position:absolute; bottom:36px; left:18px;
+    background:rgba(0,0,0,.55); backdrop-filter:blur(8px);
+    border-radius:8px; padding:5px 12px;
+    font-size:11px; color:var(--muted);
+    letter-spacing:1.2px; text-transform:uppercase;
+  }
+  #dots {
+    position:absolute; bottom:14px; left:50%;
+    transform:translateX(-50%);
+    display:flex; gap:7px; z-index:5;
+  }
+  .dot {
+    width:6px; height:6px; border-radius:50%;
+    background:rgba(255,255,255,.22);
+    transition:background .3s,transform .3s; cursor:pointer;
+  }
+  .dot.active { background:var(--accent); transform:scale(1.5); }
+  #progress-bar {
+    position:absolute; bottom:0; left:0;
+    height:3px; background:var(--accent);
+    width:0%; z-index:5;
+  }
+  #empty-state {
+    display:none; flex-direction:column;
+    align-items:center; justify-content:center;
+    height:100%; gap:14px; color:var(--muted);
+    text-align:center; padding:20px;
+  }
+  #empty-state.show { display:flex; }
+  .empty-icon { font-size:56px; opacity:.25; }
+  #empty-state p { font-size:15px; line-height:1.6; }
+
+  /* ── NEWS SIDEBAR ── */
+  #news-sidebar {
+    width:274px; background:var(--surface);
+    border-left:1px solid var(--border);
+    display:flex; flex-direction:column;
+    overflow:hidden; flex-shrink:0;
+  }
+  .news-header {
+    padding:13px 16px 10px;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center;
+    justify-content:space-between; flex-shrink:0;
+  }
+  .news-header h3 {
+    font-family:'Bebas Neue',sans-serif;
+    letter-spacing:2px; font-size:15px; color:var(--accent2);
+  }
+  .live-badge {
+    display:flex; align-items:center; gap:5px;
+    font-size:10px; color:var(--accent2);
+    background:rgba(71,200,255,.1);
+    padding:2px 9px; border-radius:50px;
+    letter-spacing:1px; text-transform:uppercase;
+  }
+  .live-dot { width:6px; height:6px; border-radius:50%; background:var(--accent2); animation:blink 1.6s infinite; }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+  #news-list { flex:1; overflow-y:auto; scrollbar-width:none; transition:opacity .4s; }
+  #news-list::-webkit-scrollbar{display:none}
+  .news-item { padding:11px 16px; border-bottom:1px solid var(--border); }
+  .news-source { font-size:9px; color:var(--accent2); text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
+  .news-title { font-size:12.5px; line-height:1.45; color:var(--text); }
+  .news-time { font-size:10px; color:var(--muted); margin-top:4px; font-family:'DM Mono',monospace; }
+  .news-placeholder { padding:20px 16px; color:var(--muted); font-size:12px; text-align:center; line-height:1.7; }
+  .news-placeholder a { color:var(--accent2); text-decoration:none; }
+  .api-status-bar { display:none; padding:7px 14px; font-size:11px; border-top:1px solid var(--border); gap:6px; align-items:center; flex-shrink:0; }
+  .api-status-bar.show { display:flex; }
+  .api-status-bar.warn  { background:rgba(255,179,71,.08); color:var(--warn); }
+  .api-status-bar.error { background:rgba(255,71,87,.08);  color:var(--danger); }
+
+  /* ── PASSWORD ── */
+  #pwd-screen {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,.82); backdrop-filter:blur(12px);
+    z-index:100; align-items:center; justify-content:center;
+    flex-direction:column; gap:14px;
+  }
+  #pwd-screen.open { display:flex; }
+  .pwd-title { font-family:'Bebas Neue',sans-serif; letter-spacing:3px; font-size:24px; color:var(--accent); }
+  .pwd-sub { color:var(--muted); font-size:13px; }
+  #pwd-input {
+    background:rgba(255,255,255,.07); border:1px solid var(--border);
+    border-radius:10px; padding:12px 20px; color:var(--text);
+    font-size:20px; letter-spacing:8px; text-align:center;
+    width:220px; outline:none; font-family:'DM Mono',monospace;
+    transition:border-color .2s;
+  }
+  #pwd-input:focus { border-color:var(--accent); }
+  #pwd-input.shake { animation:shake .35s ease; border-color:var(--danger)!important; }
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+  #pwd-error { color:var(--danger); font-size:12px; height:16px; }
+  #pwd-cancel { background:none; border:1px solid var(--border); color:var(--muted); padding:7px 18px; border-radius:50px; font-size:12px; cursor:pointer; margin-top:4px; font-family:'DM Sans',sans-serif; }
+
+  /* ── MODAL ── */
+  #modal-overlay {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,.65); backdrop-filter:blur(6px);
+    z-index:100; align-items:center; justify-content:center; padding:16px;
+  }
+  #modal-overlay.open { display:flex; }
+  #modal {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:20px; width:600px; max-width:100%;
+    max-height:90vh; display:flex; flex-direction:column;
+    overflow:hidden; box-shadow:0 40px 80px rgba(0,0,0,.6);
+  }
+  .modal-header {
+    padding:18px 22px 14px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+  }
+  .modal-title { font-family:'Bebas Neue',sans-serif; letter-spacing:2px; font-size:20px; color:var(--accent); }
+  #close-modal {
+    background:rgba(255,255,255,.06); border:1px solid var(--border);
+    color:var(--text); width:32px; height:32px; border-radius:50%;
+    font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .2s;
+  }
+  #close-modal:hover { background:rgba(255,255,255,.12); }
+  .modal-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .tab-btn {
+    flex:1; padding:11px 6px; font-family:'DM Sans',sans-serif;
+    font-size:11px; font-weight:500; letter-spacing:.6px; text-transform:uppercase;
+    background:none; border:none; color:var(--muted); cursor:pointer;
+    border-bottom:2px solid transparent; transition:color .2s,border-color .2s;
+  }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .modal-body { flex:1; overflow-y:auto; padding:20px 22px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+
+  .section-label { font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+
+  .source-toggle { display:flex; gap:8px; margin-bottom:16px; }
+  .toggle-btn { flex:1; padding:9px; background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:8px; color:var(--muted); font-family:'DM Sans',sans-serif; font-size:13px; cursor:pointer; transition:all .2s; text-align:center; }
+  .toggle-btn.active { background:rgba(232,255,71,.1); border-color:var(--accent); color:var(--accent); font-weight:500; }
+
+  #source-url, #source-local { display:none; }
+  #source-url.show, #source-local.show { display:block; }
+
+  #drop-zone { border:2px dashed var(--border); border-radius:12px; padding:28px 20px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; margin-bottom:14px; position:relative; }
+  #drop-zone:hover, #drop-zone.drag-over { border-color:var(--accent); background:rgba(232,255,71,.04); }
+  #drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .drop-icon { font-size:32px; margin-bottom:8px; }
+  .drop-text { font-size:14px; color:var(--text); margin-bottom:4px; }
+  .drop-sub { font-size:11px; color:var(--muted); }
+
+  #upload-progress { display:none; margin-bottom:14px; }
+  #upload-progress.show { display:block; }
+  .progress-label { font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between; }
+  .progress-track { height:4px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); border-radius:2px; width:0%; transition:width .1s; }
+  #upload-warning { font-size:11px; color:var(--warn); margin-top:6px; display:none; }
+
+  #file-preview { display:none; align-items:center; gap:10px; background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:14px; }
+  #file-preview.show { display:flex; }
+  .preview-thumb { width:48px; height:36px; border-radius:5px; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; overflow:hidden; }
+  .preview-thumb img { width:100%; height:100%; object-fit:cover; }
+  .preview-info { flex:1; min-width:0; }
+  .preview-name { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .preview-size { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; }
+  #clear-file { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:2px 4px; }
+
+  .form-row { margin-bottom:12px; }
+  .form-row label { display:block; font-size:11px; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:.8px; }
+  .form-row input, .form-row select { width:100%; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:8px; padding:9px 12px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px; outline:none; transition:border-color .2s; }
+  .form-row input:focus, .form-row select:focus { border-color:var(--accent); }
+  .form-row select option { background:#1a1a24; }
+  .form-row-inline { display:flex; gap:10px; }
+  .form-row-inline .form-row { flex:1; }
+  .btn-row { display:flex; gap:10px; margin-top:16px; }
+
+  .btn-primary { background:var(--accent); color:#0a0a0f; border:none; border-radius:8px; padding:10px 20px; font-family:'DM Sans',sans-serif; font-weight:600; font-size:13px; cursor:pointer; flex:1; transition:opacity .2s; }
+  .btn-primary:hover { opacity:.88; }
+  .btn-ghost { background:rgba(255,255,255,.05); color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:10px 16px; font-family:'DM Sans',sans-serif; font-size:13px; cursor:pointer; transition:background .2s; }
+  .btn-ghost:hover { background:rgba(255,255,255,.09); }
+
+  .media-item { display:flex; align-items:center; gap:11px; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; transition:border-color .2s; }
+  .media-item:hover { border-color:rgba(255,255,255,.13); }
+  .drag-handle { color:var(--muted); font-size:14px; cursor:grab; padding:4px 2px; flex-shrink:0; user-select:none; }
+  .media-thumb { width:54px; height:38px; border-radius:5px; background:rgba(255,255,255,.05); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; overflow:hidden; }
+  .media-thumb img { width:100%; height:100%; object-fit:cover; }
+  .media-info { flex:1; min-width:0; }
+  .media-name { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; }
+  .media-meta { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; }
+  .badge { font-size:9px; padding:2px 7px; border-radius:50px; text-transform:uppercase; letter-spacing:.8px; flex-shrink:0; }
+  .badge-img { background:rgba(232,255,71,.1); color:var(--accent); }
+  .badge-vid { background:rgba(71,200,255,.1); color:var(--accent2); }
+  .badge-local { background:rgba(46,213,115,.1); color:var(--success); }
+  .btn-del { background:rgba(255,71,87,.08); border:1px solid rgba(255,71,87,.18); color:var(--danger); width:30px; height:30px; border-radius:7px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; flex-shrink:0; }
+  .btn-del:hover { background:rgba(255,71,87,.18); }
+  .empty-media { color:var(--muted); font-size:13px; text-align:center; padding:20px 0; }
+
+  .info-box { background:rgba(71,200,255,.07); border:1px solid rgba(71,200,255,.2); border-radius:10px; padding:12px 14px; font-size:12px; color:rgba(240,240,240,.7); line-height:1.7; margin-bottom:16px; }
+  .info-box a { color:var(--accent2); text-decoration:none; }
+  .info-box strong { color:var(--text); }
+
+  .config-section { margin-bottom:20px; }
+  .config-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+  .config-row:last-child { border-bottom:none; }
+  .config-label { font-size:13px; }
+  .config-sub { font-size:10px; color:var(--muted); margin-top:2px; }
+  .config-input { background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:7px; padding:7px 11px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; width:150px; outline:none; text-align:right; transition:border-color .2s; flex-shrink:0; }
+  .config-input:focus { border-color:var(--accent); }
+
+  /* Toast */
+  #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(70px); background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:9px 20px; border-radius:50px; font-size:13px; z-index:999; transition:transform .3s ease; pointer-events:none; white-space:nowrap; }
+  #toast.show { transform:translateX(-50%) translateY(0); }
+  #toast.success { background:rgba(46,213,115,.15); border-color:rgba(46,213,115,.3); color:var(--success); }
+  #toast.error   { background:rgba(255,71,87,.15);  border-color:rgba(255,71,87,.3);  color:var(--danger); }
+  #toast.warn    { background:rgba(255,179,71,.15); border-color:rgba(255,179,71,.3); color:var(--warn); }
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .ld{display:inline-block;animation:pulse 1.4s infinite}
+  .ld:nth-child(2){animation-delay:.2s}
+  .ld:nth-child(3){animation-delay:.4s}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">Display Pro</div>
+  <div class="topbar-right">
+    <div id="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">Conectando...</span>
+    </div>
+    <div id="weather-widget" onclick="fetchWeather(true)">
+      <div class="w-icon" id="w-icon">🌤</div>
+      <div>
+        <div class="w-temp" id="w-temp">--°C</div>
+        <div class="w-desc" id="w-desc">Carregando<span class="ld">.</span><span class="ld">.</span><span class="ld">.</span></div>
+      </div>
+    </div>
+    <div id="clock-widget">
+      <div class="clock-time" id="clock-time">00:00</div>
+      <div class="clock-date" id="clock-date">---</div>
+    </div>
+    <button id="manage-btn" onclick="openPwd()">⚙ Gerenciar</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="carousel-wrap">
+    <div id="slides-container"></div>
+    <div id="empty-state">
+      <div class="empty-icon">🖼</div>
+      <p>Nenhuma mídia ainda.<br>Toque em <strong>Gerenciar</strong> para adicionar.</p>
+    </div>
+    <div id="dots"></div>
+    <div id="progress-bar"></div>
+  </div>
+  <div id="news-sidebar">
+    <div class="news-header">
+      <h3>Notícias</h3>
+      <span class="live-badge"><span class="live-dot"></span>Ao Vivo</span>
+    </div>
+    <div id="news-list">
+      <div class="news-placeholder">Carregando<span class="ld">.</span><span class="ld">.</span><span class="ld">.</span></div>
+    </div>
+    <div class="api-status-bar" id="news-status"></div>
+  </div>
+</div>
+
+<!-- PASSWORD -->
+<div id="pwd-screen">
+  <div class="pwd-title">🔐 Painel de Gestão</div>
+  <div class="pwd-sub">Digite a senha para continuar</div>
+  <input type="password" id="pwd-input" maxlength="8" placeholder="••••"
+    oninput="handlePwdInput()"
+    onkeydown="if(event.key==='Enter')handlePwdInput(true)">
+  <div id="pwd-error">&nbsp;</div>
+  <button id="pwd-cancel" onclick="closePwd()">Cancelar</button>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" onclick="onOverlayClick(event)">
+  <div id="modal">
+    <div class="modal-header">
+      <div class="modal-title">Gerenciar Display</div>
+      <button id="close-modal" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-add')">➕ Adicionar</button>
+      <button class="tab-btn" onclick="switchTab('tab-list')">🗂 Mídias (<span id="count-badge">0</span>)</button>
+      <button class="tab-btn" onclick="switchTab('tab-config')">⚙ Config</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- ADD -->
+      <div id="tab-add" class="tab-panel active">
+        <div class="section-label">Fonte da Mídia</div>
+        <div class="source-toggle">
+          <button class="toggle-btn active" onclick="setSource('url')" id="src-url-btn">🔗 URL / Link</button>
+          <button class="toggle-btn" onclick="setSource('local')" id="src-local-btn">📁 Arquivo Local</button>
+        </div>
+        <div id="source-url" class="show">
+          <div class="form-row">
+            <label>URL da Imagem ou Vídeo</label>
+            <input type="url" id="input-url" placeholder="https://exemplo.com/banner.jpg">
+          </div>
+        </div>
+        <div id="source-local">
+          <div id="drop-zone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onFileDrop(event)">
+            <input type="file" id="file-input" accept="image/*,video/*" onchange="handleFileSelect(event)">
+            <div class="drop-icon">📂</div>
+            <div class="drop-text">Toque para selecionar ou arraste aqui</div>
+            <div class="drop-sub">Imagens: JPG, PNG, GIF, WebP &nbsp;|&nbsp; Vídeos: MP4, WebM, MOV</div>
+          </div>
+          <div id="upload-progress">
+            <div class="progress-label"><span id="upload-label">Processando...</span><span id="upload-pct">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            <div id="upload-warning">⚠ Arquivo muito grande. Prefira usar URL para vídeos.</div>
+          </div>
+          <div id="file-preview">
+            <div class="preview-thumb" id="preview-thumb"></div>
+            <div class="preview-info">
+              <div class="preview-name" id="preview-name">—</div>
+              <div class="preview-size" id="preview-size">—</div>
+            </div>
+            <button id="clear-file" onclick="clearFile()">✕</button>
+          </div>
+        </div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label>Tipo</label>
+            <select id="input-type">
+              <option value="image">🖼 Imagem</option>
+              <option value="video">🎬 Vídeo</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Duração (seg) — imagens</label>
+            <input type="number" id="input-duration" value="8" min="3" max="120">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Nome / Descrição</label>
+          <input type="text" id="input-name" placeholder="Ex: Promoção de Junho">
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="addMedia()">+ Adicionar ao Carrossel</button>
+          <button class="btn-ghost" onclick="clearAddForm()">Limpar</button>
+        </div>
+      </div>
+
+      <!-- LIST -->
+      <div id="tab-list" class="tab-panel">
+        <div class="section-label" style="margin-bottom:14px;">Mídias — Arraste para reordenar · Sincronizado em todas as telas</div>
+        <div id="media-list-el"></div>
+      </div>
+
+      <!-- CONFIG -->
+      <div id="tab-config" class="tab-panel">
+        <div class="info-box">
+          <strong>Sincronização Firebase ativa</strong> — qualquer alteração aqui é refletida em todos os tablets em tempo real.<br><br>
+          🌤 <strong>Clima</strong>: <a href="https://openweathermap.org" target="_blank">openweathermap.org</a> (grátis)<br>
+          📰 <strong>Notícias</strong>: <a href="https://gnews.io" target="_blank">gnews.io</a> (grátis, 100 req/dia)
+        </div>
+        <div class="config-section">
+          <div class="section-label">🌤 Clima</div>
+          <div class="config-row">
+            <div><div class="config-label">Cidade</div><div class="config-sub">Ex: Sao Paulo, Orlando</div></div>
+            <input class="config-input" id="cfg-city" type="text" placeholder="Sao Paulo">
+          </div>
+          <div class="config-row">
+            <div><div class="config-label">API Key OpenWeatherMap</div><div class="config-sub">openweathermap.org</div></div>
+            <input class="config-input" id="cfg-weather-key" type="text" placeholder="sua_key">
+          </div>
+          <div style="margin-top:10px;">
+            <button class="btn-ghost" style="width:100%;font-size:12px;" onclick="testWeather()">🧪 Testar Clima</button>
+          </div>
+        </div>
+        <div class="config-section">
+          <div class="section-label">📰 Notícias</div>
+          <div class="config-row">
+            <div><div class="config-label">API Key GNews</div><div class="config-sub">gnews.io</div></div>
+            <input class="config-input" id="cfg-news-key" type="text" placeholder="sua_key">
+          </div>
+          <div style="margin-top:10px;">
+            <button class="btn-ghost" style="width:100%;font-size:12px;" onclick="testNews()">🧪 Testar Notícias</button>
+          </div>
+        </div>
+        <div class="config-section">
+          <div class="section-label">🔐 Segurança</div>
+          <div class="config-row">
+            <div><div class="config-label">Senha do Painel</div><div class="config-sub">Mínimo 4 caracteres. Padrão: 1234</div></div>
+            <input class="config-input" id="cfg-pwd" type="password" placeholder="nova senha">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="saveConfig()" style="width:100%;margin-top:4px;">💾 Salvar e Sincronizar Todas as Telas</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let mediaList = [];
+let config    = { city:'Sao Paulo', weatherKey:'', newsKey:'', password:'1234' };
+let currentSlide  = 0;
+let slideTimer    = null;
+let currentSource = 'url';
+let pendingFileData = null;
+let dragSrcIdx    = null;
+let unsubscribe   = null;
+
+const DAYS   = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+const MONTHS = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+
+// ─── CLOCK ───────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock-time').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('clock-date').textContent =
+    DAYS[now.getDay()] + ' ' + now.getDate() + ' ' + MONTHS[now.getMonth()];
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ─── SYNC STATUS ─────────────────────────────────────────────────────────────
+function setSyncStatus(state, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  dot.className = 'sync-dot ' + state;
+  lbl.textContent = label;
+}
+
+// ─── FIREBASE SYNC ───────────────────────────────────────────────────────────
+document.addEventListener('firebase-ready', () => {
+  const db = window._db;
+  const docRef = window._doc(db, 'display', 'config');
+
+  setSyncStatus('syncing', 'Conectando...');
+
+  // Listen for real-time updates
+  unsubscribe = window._onSnap(docRef, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data.mediaList) {
+        mediaList = data.mediaList;
+        buildCarousel();
+        updateCountBadge();
+      }
+      if (data.config) {
+        config = { ...config, ...data.config };
+        fetchWeather(false);
+        fetchNews();
+      }
+    }
+    setSyncStatus('online', 'Sincronizado');
+  }, (err) => {
+    console.error('Firestore error:', err);
+    setSyncStatus('error', 'Erro de conexão');
+  });
+});
+
+async function saveToFirebase() {
+  if (!window._fbReady) { showToast('Firebase não conectado.', 'error'); return; }
+  setSyncStatus('syncing', 'Salvando...');
+  try {
+    const db = window._db;
+    const docRef = window._doc(db, 'display', 'config');
+    await window._setDoc(docRef, { mediaList, config }, { merge: true });
+    setSyncStatus('online', 'Sincronizado');
+    showToast('✓ Salvo e sincronizado!', 'success');
+  } catch(e) {
+    setSyncStatus('error', 'Erro ao salvar');
+    showToast('Erro ao salvar no Firebase.', 'error');
+  }
+}
+
+// ─── WEATHER ─────────────────────────────────────────────────────────────────
+const W_ICONS = {'01d':'☀️','01n':'🌙','02d':'⛅','02n':'⛅','03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️','09d':'🌧','09n':'🌧','10d':'🌦','10n':'🌧','11d':'⛈','11n':'⛈','13d':'❄️','13n':'❄️','50d':'🌫','50n':'🌫'};
+
+async function fetchWeather(manual) {
+  const key = config.weatherKey;
+  if (!key) { setWeatherUI('N/A','Configure API Key','🌤',true); return; }
+  if (manual) setWeatherUI('...','Buscando...','🌤',false);
+  try {
+    const r = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(config.city)}&appid=${key}&units=metric&lang=pt_br`);
+    const d = await r.json();
+    if (d.cod === 401) { setWeatherUI('Erro','API Key inválida','❌',true); return; }
+    if (d.cod === 404) { setWeatherUI('Erro','Cidade não encontrada','❓',true); return; }
+    if (d.cod !== 200) throw new Error();
+    setWeatherUI(Math.round(d.main.temp)+'°C', d.weather[0].description, W_ICONS[d.weather[0].icon]||'🌤', false);
+    if (manual) showToast('✓ Clima atualizado!','success');
+  } catch { setWeatherUI('Erro','Falha na conexão','⚠',true); }
+}
+function setWeatherUI(temp,desc,icon,isError) {
+  document.getElementById('w-temp').textContent = temp;
+  const el = document.getElementById('w-desc');
+  el.textContent = desc;
+  el.className = 'w-desc'+(isError?' w-error':'');
+  document.getElementById('w-icon').textContent = icon;
+}
+async function testWeather() {
+  config.weatherKey = document.getElementById('cfg-weather-key').value.trim();
+  config.city = document.getElementById('cfg-city').value.trim()||'Sao Paulo';
+  await fetchWeather(true);
+}
+setInterval(()=>fetchWeather(false), 10*60*1000);
+
+// ─── NEWS ─────────────────────────────────────────────────────────────────────
+let newsScrollTimer = null;
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function timeAgo(iso) {
+  if (!iso) return '';
+  const m = (Date.now()-new Date(iso).getTime())/60000;
+  if (m<1) return 'agora';
+  if (m<60) return Math.round(m)+'min';
+  if (m<1440) return Math.round(m/60)+'h atrás';
+  return Math.round(m/1440)+'d atrás';
+}
+function setNewsStatus(msg,type) { const el=document.getElementById('news-status'); el.textContent=msg; el.className='api-status-bar show '+(type||''); }
+function clearNewsStatus() { document.getElementById('news-status').className='api-status-bar'; }
+
+async function fetchNews() {
+  const key = config.newsKey;
+  const list = document.getElementById('news-list');
+  if (!key) { list.innerHTML='<div class="news-placeholder">Configure a GNews API Key em ⚙ Config.</div>'; setNewsStatus('⚠ GNews Key não configurada','warn'); return; }
+  try {
+    const r = await fetch(`https://gnews.io/api/v4/top-headlines?lang=pt&country=br&max=20&apikey=${key}`);
+    const d = await r.json();
+    const articles = Array.isArray(d.articles) ? d.articles : [];
+    if (!articles.length && !d.totalArticles) { list.innerHTML='<div class="news-placeholder">Key inválida ou sem resultado.<br><a href="https://gnews.io" target="_blank">gnews.io</a></div>'; setNewsStatus('✕ Erro GNews','error'); return; }
+    if (!articles.length) { list.innerHTML='<div class="news-placeholder">Nenhuma notícia disponível.</div>'; return; }
+    list.innerHTML = articles.map(a=>`<div class="news-item"><div class="news-source">${escHtml(a.source?.name||'Notícia')}</div><div class="news-title">${escHtml(a.title||'')}</div><div class="news-time">${timeAgo(a.publishedAt)}</div></div>`).join('');
+    clearNewsStatus();
+    startNewsScroll();
+  } catch { list.innerHTML='<div class="news-placeholder">Erro ao carregar notícias.</div>'; setNewsStatus('✕ Erro ao carregar','error'); }
+}
+async function testNews() {
+  config.newsKey = document.getElementById('cfg-news-key').value.trim();
+  showToast('Testando GNews...','');
+  await fetchNews();
+}
+function startNewsScroll() {
+  const el = document.getElementById('news-list');
+  if (newsScrollTimer) clearInterval(newsScrollTimer);
+  el.scrollTop = 0;
+  newsScrollTimer = setInterval(()=>{
+    const max = el.scrollHeight-el.clientHeight;
+    if (max<=0) return;
+    if (el.scrollTop>=max-2) { el.style.opacity='0'; setTimeout(()=>{el.scrollTop=0;el.style.opacity='1';},500); }
+    else el.scrollTop+=.7;
+  },30);
+}
+setInterval(fetchNews, 5*60*1000);
+
+// ─── CAROUSEL ────────────────────────────────────────────────────────────────
+function buildCarousel() {
+  const container = document.getElementById('slides-container');
+  const dotsEl    = document.getElementById('dots');
+  const empty     = document.getElementById('empty-state');
+  if (slideTimer) { clearTimeout(slideTimer); slideTimer=null; }
+  container.innerHTML=''; dotsEl.innerHTML='';
+  if (!mediaList.length) { empty.classList.add('show'); resetBar(); return; }
+  empty.classList.remove('show');
+  mediaList.forEach((m,i)=>{
+    const slide = document.createElement('div');
+    slide.className = 'slide'+(i===0?' active':'');
+    if (m.type==='video') { const v=document.createElement('video'); v.src=m.url; v.muted=true; v.playsInline=true; v.preload='metadata'; slide.appendChild(v); }
+    else { const img=document.createElement('img'); img.src=m.url; img.alt=m.name||''; img.onerror=()=>{img.style.display='none';}; slide.appendChild(img); }
+    const lbl=document.createElement('div'); lbl.className='slide-label'; lbl.textContent=m.name||(m.type==='video'?'Vídeo':'Imagem'); slide.appendChild(lbl);
+    container.appendChild(slide);
+    const dot=document.createElement('div'); dot.className='dot'+(i===0?' active':''); dot.onclick=()=>goToSlide(i); dotsEl.appendChild(dot);
+  });
+  currentSlide=0; startSlide();
+}
+
+function resetBar() { const b=document.getElementById('progress-bar'); b.style.transition='none'; b.style.width='0%'; }
+function animateBar(ms) { const b=document.getElementById('progress-bar'); b.style.transition='none'; b.style.width='0%'; requestAnimationFrame(()=>requestAnimationFrame(()=>{ b.style.transition=`width ${ms}ms linear`; b.style.width='100%'; })); }
+function setBarPct(p) { const b=document.getElementById('progress-bar'); b.style.transition='none'; b.style.width=p+'%'; }
+
+function startSlide() {
+  if (slideTimer) { clearTimeout(slideTimer); slideTimer=null; }
+  if (!mediaList.length) return;
+  const slides=document.querySelectorAll('.slide');
+  const m=mediaList[currentSlide];
+  const slide=slides[currentSlide];
+  if (!slide) return;
+  const vid=slide.querySelector('video');
+  if (vid) {
+    vid.currentTime=0; vid.loop=false; resetBar();
+    vid.play().catch(()=>{});
+    vid.ontimeupdate=()=>{ if(vid.duration>0) setBarPct(vid.currentTime/vid.duration*100); };
+    vid.onended=()=>{ vid.ontimeupdate=null; vid.onended=null; advanceSlide(); };
+  } else {
+    const ms=(m.duration||8)*1000;
+    animateBar(ms);
+    slideTimer=setTimeout(advanceSlide, ms);
+  }
+}
+
+function advanceSlide() { goToSlide((currentSlide+1)%mediaList.length); }
+function goToSlide(idx) {
+  const slides=document.querySelectorAll('.slide');
+  const dots=document.querySelectorAll('.dot');
+  if (!slides.length) return;
+  const cv=slides[currentSlide]?.querySelector('video');
+  if (cv) { cv.pause(); cv.ontimeupdate=null; cv.onended=null; }
+  if (slideTimer) { clearTimeout(slideTimer); slideTimer=null; }
+  slides[currentSlide]?.classList.remove('active'); dots[currentSlide]?.classList.remove('active');
+  currentSlide=idx;
+  slides[currentSlide]?.classList.add('active'); dots[currentSlide]?.classList.add('active');
+  startSlide();
+}
+
+// ─── PASSWORD ────────────────────────────────────────────────────────────────
+function openPwd() {
+  const inp=document.getElementById('pwd-input'); inp.value=''; inp.className='';
+  document.getElementById('pwd-error').innerHTML='&nbsp;';
+  document.getElementById('pwd-screen').classList.add('open');
+  setTimeout(()=>inp.focus(),150);
+}
+function closePwd() { document.getElementById('pwd-screen').classList.remove('open'); }
+function handlePwdInput(force) {
+  const inp=document.getElementById('pwd-input'); const val=inp.value;
+  if (!force&&val.length<4) return;
+  if (val===config.password) { closePwd(); openModal(); }
+  else if (val.length>=4) { inp.classList.add('shake'); document.getElementById('pwd-error').textContent='Senha incorreta'; setTimeout(()=>{inp.classList.remove('shake');inp.value='';},400); }
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function openModal() { loadConfigFields(); updateCountBadge(); renderMediaList(); document.getElementById('modal-overlay').classList.add('open'); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function onOverlayClick(e) { if(e.target===document.getElementById('modal-overlay')) closeModal(); }
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  ['tab-add','tab-list','tab-config'].indexOf(id) >= 0 && document.querySelectorAll('.tab-btn')[['tab-add','tab-list','tab-config'].indexOf(id)]?.classList.add('active');
+  if (id==='tab-list') renderMediaList();
+}
+function updateCountBadge() { document.getElementById('count-badge').textContent=mediaList.length; }
+
+// ─── SOURCE ───────────────────────────────────────────────────────────────────
+function setSource(src) {
+  currentSource=src;
+  document.getElementById('source-url').classList.toggle('show',src==='url');
+  document.getElementById('source-local').classList.toggle('show',src==='local');
+  document.getElementById('src-url-btn').classList.toggle('active',src==='url');
+  document.getElementById('src-local-btn').classList.toggle('active',src==='local');
+  if (src==='url') { pendingFileData=null; resetUploadUI(); }
+}
+
+// ─── FILE UPLOAD ──────────────────────────────────────────────────────────────
+function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function onDragLeave()  { document.getElementById('drop-zone').classList.remove('drag-over'); }
+function onFileDrop(e)  { e.preventDefault(); document.getElementById('drop-zone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) processFile(f); }
+function handleFileSelect(e) { const f=e.target.files[0]; if(f) processFile(f); e.target.value=''; }
+
+function processFile(file) {
+  const isImage=file.type.startsWith('image/'); const isVideo=file.type.startsWith('video/');
+  if (!isImage&&!isVideo) { showToast('Formato não suportado.','error'); return; }
+  const sizeMB=file.size/1024/1024;
+  document.getElementById('upload-warning').style.display=sizeMB>5?'block':'none';
+  document.getElementById('upload-progress').classList.add('show');
+  document.getElementById('file-preview').classList.remove('show');
+  document.getElementById('progress-fill').style.width='0%';
+  document.getElementById('upload-pct').textContent='0%';
+  document.getElementById('upload-label').textContent='Lendo arquivo...';
+  document.getElementById('input-type').value=isVideo?'video':'image';
+  if (!document.getElementById('input-name').value) document.getElementById('input-name').value=file.name.replace(/\.[^.]+$/,'');
+  const reader=new FileReader();
+  reader.onprogress=ev=>{ if(ev.lengthComputable){const p=Math.round(ev.loaded/ev.total*90); document.getElementById('progress-fill').style.width=p+'%'; document.getElementById('upload-pct').textContent=p+'%';} };
+  reader.onload=ev=>{
+    document.getElementById('progress-fill').style.width='100%'; document.getElementById('upload-pct').textContent='100%'; document.getElementById('upload-label').textContent='Pronto!';
+    pendingFileData={dataUrl:ev.target.result,type:isVideo?'video':'image',name:file.name,sizeMB};
+    document.getElementById('preview-thumb').innerHTML=isImage?`<img src="${ev.target.result}">`:'🎬';
+    document.getElementById('preview-name').textContent=file.name;
+    document.getElementById('preview-size').textContent=sizeMB.toFixed(1)+' MB';
+    document.getElementById('file-preview').classList.add('show');
+    setTimeout(()=>document.getElementById('upload-progress').classList.remove('show'),900);
+  };
+  reader.onerror=()=>{ showToast('Erro ao ler arquivo.','error'); resetUploadUI(); };
+  reader.readAsDataURL(file);
+}
+function clearFile() { pendingFileData=null; resetUploadUI(); }
+function resetUploadUI() { document.getElementById('file-preview').classList.remove('show'); document.getElementById('upload-progress').classList.remove('show'); }
+
+// ─── MEDIA MANAGEMENT ────────────────────────────────────────────────────────
+async function addMedia() {
+  const type=document.getElementById('input-type').value;
+  const name=document.getElementById('input-name').value.trim()||'Sem título';
+  const duration=parseInt(document.getElementById('input-duration').value)||8;
+  let url='', isLocal=false;
+  if (currentSource==='url') { url=document.getElementById('input-url').value.trim(); if(!url){showToast('Informe a URL da mídia.','error');return;} }
+  else { if(!pendingFileData){showToast('Selecione um arquivo primeiro.','error');return;} url=pendingFileData.dataUrl; isLocal=true; }
+  const item={id:Date.now(),url,type,name,duration,isLocal};
+  mediaList.push(item);
+  clearAddForm(); updateCountBadge(); buildCarousel();
+  await saveToFirebase();
+  switchTab('tab-list');
+}
+
+async function removeMedia(id) {
+  mediaList=mediaList.filter(m=>m.id!==id);
+  updateCountBadge(); renderMediaList(); buildCarousel();
+  await saveToFirebase();
+}
+
+function clearAddForm() {
+  document.getElementById('input-url').value='';
+  document.getElementById('input-name').value='';
+  document.getElementById('input-duration').value='8';
+  document.getElementById('input-type').value='image';
+  clearFile();
+}
+
+function renderMediaList() {
+  const el=document.getElementById('media-list-el');
+  if (!mediaList.length) { el.innerHTML='<div class="empty-media">Nenhuma mídia cadastrada ainda.</div>'; return; }
+  el.innerHTML=mediaList.map((m,i)=>{
+    const isVid=m.type==='video';
+    return `<div class="media-item" draggable="true" ondragstart="dStart(event,${i})" ondragover="dOver(event)" ondrop="dDrop(event,${i})" ondragend="dEnd()">
+      <span class="drag-handle">⠿</span>
+      <div class="media-thumb">${isVid?'🎬':`<img src="${m.url}" onerror="this.style.display='none'">`}</div>
+      <div class="media-info"><div class="media-name">${escHtml(m.name)}</div><div class="media-meta">${isVid?'Vídeo — duração automática':m.duration+'s por slide'}</div></div>
+      <span class="badge ${isVid?'badge-vid':'badge-img'}">${isVid?'VID':'IMG'}</span>
+      ${m.isLocal?'<span class="badge badge-local">LOCAL</span>':''}
+      <button class="btn-del" onclick="removeMedia(${m.id})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function dStart(e,i){dragSrcIdx=i;e.dataTransfer.effectAllowed='move';}
+function dOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
+async function dDrop(e,i){
+  e.preventDefault();
+  if(dragSrcIdx===null||dragSrcIdx===i) return;
+  const item=mediaList.splice(dragSrcIdx,1)[0];
+  mediaList.splice(i,0,item);
+  renderMediaList(); buildCarousel();
+  await saveToFirebase();
+}
+function dEnd(){dragSrcIdx=null;}
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+function loadConfigFields() {
+  document.getElementById('cfg-city').value=config.city;
+  document.getElementById('cfg-weather-key').value=config.weatherKey;
+  document.getElementById('cfg-news-key').value=config.newsKey;
+  document.getElementById('cfg-pwd').value='';
+}
+
+async function saveConfig() {
+  config.city=document.getElementById('cfg-city').value.trim()||'Sao Paulo';
+  config.weatherKey=document.getElementById('cfg-weather-key').value.trim();
+  config.newsKey=document.getElementById('cfg-news-key').value.trim();
+  const np=document.getElementById('cfg-pwd').value;
+  if(np&&np.length<4){showToast('Senha mínima: 4 caracteres.','error');return;}
+  if(np) config.password=np;
+  await saveToFirebase();
+  fetchWeather(false); fetchNews();
+}
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let toastTimer=null;
+function showToast(msg,type) {
+  const t=document.getElementById('toast'); t.textContent=msg;
+  t.className='show'+(type?' '+type:'');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='';},3000);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+buildCarousel();
+</script>
+</body>
+</html>
